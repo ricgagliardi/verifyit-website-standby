@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0" />
+  <!-- <link rel="shortcut icon" href="/retail/images/favicon.ico"> -->
+  <title>Question Tester - VerifyIt</title>
+  <link href="./css/style.css" rel="stylesheet" type="text/css">
+  <script src="./js/jszip.js"></script>
+  <style>
+    .choice {width:100%}
+    .wrong-choice {text-decoration: line-through}
+  </style>
+</head>
+<body>
+  <section>
+    <input type="file" id="file-input" />
+  </section>
+  <main></main>
+
+  <input type="checkbox" id="followup-control" class="modal">
+  <div>
+    <div class="card">
+      <label for="followup-control" class="modal-close" ></label>
+      <h3 class="section">Correct!</h3>
+      <p id="followup" class="section"></p>
+    </div>
+  </div>
+
+  <input type="checkbox" id="hint-control" class="modal">
+  <div>
+    <div class="card">
+      <label for="hint-control" class="modal-close" ></label>
+      <h3 class="section">Hint:</h3>
+      <p id="hint" class="section"></p>
+    </div>
+  </div>
+
+  <pre></pre>
+
+  <section>
+    <button id="btn-submit" class="inverse" style="visibility:hidden; float:right">Submit Question</button>
+  </section>
+
+  <script>
+    function log(...msgs) {
+      let con = document.querySelector('pre')
+      con.innerHTML += msgs.join(' ') + '\n'
+    }
+    function main() {
+      function grabNodes(body, name) {
+        let foundName = false
+        let result = Array.from(body.children).filter( node => {
+          if (foundName && node.nodeName == 'H1') foundName = false
+          if (node.nodeName == 'H1' && node.innerHTML.includes(name)) foundName = true
+          // console.log(node.nodeName, foundName)
+          return foundName
+        })
+        return result.slice(1)
+      }
+      function respond(evt) {
+        evt.preventDefault()
+        console.log('respond', evt.target.dataset.no, answer)
+        if (evt.target.dataset.no == answer) {
+          document.getElementById('followup-control').checked = true
+          return
+        }
+        evt.target.classList.add('wrong-choice')
+      }
+      function hint(evt) {
+        evt.preventDefault()
+        let hintNo = Number(evt.target.href.split('#')[1]).toString()
+        if (!evt.target.href.includes(location.pathname)) { //must be external link
+          window.open(evt.target.href)
+        }
+        else {
+          console.log('showing hint', hintNo, hints[hintNo-1])
+          document.getElementById('hint').innerHTML = hints[hintNo-1]
+          document.getElementById('hint-control').checked = true
+        }
+        return false
+      }
+
+      var answer, hints
+      document.getElementById('btn-submit').onclick = () => alert('Not implemented yet. (Only available to Editors?)')
+
+      document.getElementById('file-input').onchange = async evt => {
+        let file = evt.target.files[0]
+        console.log('file', file)
+        log('Title:', file.name.slice(0,file.name.lastIndexOf('.')))
+        let zip = await JSZip.loadAsync(file) 
+        console.log('zip', zip)
+        let htmlName = Object.keys(zip.files).filter( n => !n.includes('/') && n.endsWith('.html') )[0]
+        console.log('htmlName', htmlName)
+        let html = await zip.file(htmlName).async("string")
+
+        const parser = new DOMParser()
+        const dom = parser.parseFromString(html, "text/html")
+        console.log(dom)
+        let sheet = document.createElement('style')
+        sheet.innerHTML = dom.querySelector('head > style').innerHTML
+        document.head.appendChild(sheet)
+
+        let body = dom.querySelector('body')
+
+        Array.from(body.querySelectorAll('a')).forEach( a => {
+          if (!a.href.includes(location.pathname)) { // only external links
+            const url = new URL(a.href)
+            a.href = url.searchParams.get('q')
+          }
+        })
+        // log('Title:', grabNodes(body, 'Question Title')[0].firstChild.innerHTML)
+        log('Author:', grabNodes(body, 'Author')[0].firstChild.innerHTML)
+        log('Categories:', grabNodes(body, 'Categories')[0].firstChild.innerHTML)
+        // #contents > div > p:nth-child(9) > span
+        answer = grabNodes(body, 'Correct Answer')[0].firstChild.innerText
+        log('Correct answer:', answer)
+
+        let main = document.querySelector('main')
+        main.className = body.className
+        grabNodes(body, 'Question Content').forEach( n => main.appendChild(n) )
+        Array.from(grabNodes(body, 'Choices')[0].children).forEach( (node, idx) => {
+          let label = node.querySelector('span').innerHTML
+          main.innerHTML += `\n<button data-no="${idx+1}" class="choice">${label}</button>`
+        })
+        Array.from(document.querySelectorAll('.choice')).forEach( btn => btn.onclick = respond)
+        let followup = document.querySelector('#followup')
+        grabNodes(body, 'Followup').forEach( n => followup.appendChild(n) )
+        Array.from(document.querySelectorAll('a')).forEach( btn => btn.onclick = hint)
+        hints = Array.from(grabNodes(body, 'Hints')[0].children)
+          .map( node => node.querySelector('span').innerHTML )
+        hints.forEach( (h, i) => log(`  hint ${i+1}:  ${h}`) )
+        // .catch( err => log('Failed to fetch page: ', err) )
+
+        let imageNames = Object.keys(zip.files).filter( n => n.startsWith('images/'))
+        imageNames.forEach( async n => {
+          let img = await zip.file(n).async('blob')
+          let urlCreator = window.URL || window.webkitURL;
+          let imageUrl = urlCreator.createObjectURL(img);
+          let elem = document.querySelector(`img[src="${n}"]`)
+          let buf = new Image()
+          buf.onload = () => {
+            let canvas = document.createElement('canvas')
+            let ctbuf = canvas.getContext('2d')
+            canvas.width = buf.width
+            canvas.height = buf.height
+            ctbuf.drawImage(buf, 0, 0)
+            elem.src = canvas.toDataURL('image/png')
+          }
+          buf.src = imageUrl
+        })
+       document.getElementById('btn-submit').style.visibility = 'visible'
+      }
+    }
+
+    window.onload = main
+  </script>
+</body>
+</html>

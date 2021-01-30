@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0" />
+  <!-- <link rel="shortcut icon" href="/retail/images/favicon.ico"> -->
+  <title>Question Tester - VerifyIt</title>
+  <link href="./css/style.css" rel="stylesheet" type="text/css">
+  <style>
+    .choice {width:100%}
+    .wrong-choice {text-decoration: line-through}
+  </style>
+</head>
+<body>
+  <main></main>
+
+  <input type="checkbox" id="followup-control" class="modal">
+  <div>
+    <div class="card">
+      <label for="followup-control" class="modal-close" ></label>
+      <h3 class="section">Correct!</h3>
+      <p id="followup" class="section"></p>
+    </div>
+  </div>
+
+  <input type="checkbox" id="hint-control" class="modal">
+  <div>
+    <div class="card">
+      <label for="hint-control" class="modal-close" ></label>
+      <h3 class="section">Hint:</h3>
+      <p id="hint" class="section"></p>
+    </div>
+  </div>
+
+  <pre></pre>
+  <script>
+    function log(...msgs) {
+      let con = document.querySelector('pre')
+      con.innerHTML += msgs.join(' ') + '\n'
+    }
+    function main() {
+      function grabNodes(container, name) {
+        let foundName = false
+        let result = Array.from(container.children).filter( node => {
+          if (foundName && node.nodeName == 'H1') foundName = false
+          if (node.nodeName == 'H1' && node.innerHTML.includes(name)) foundName = true
+          // console.log(node.nodeName, foundName)
+          return foundName
+        })
+        return result.slice(1)
+      }
+      function respond(evt) {
+        evt.preventDefault()
+        console.log('respond', evt.target.dataset.no, answer)
+        if (evt.target.dataset.no == answer) {
+          document.getElementById('followup-control').checked = true
+          return
+        }
+        evt.target.classList.add('wrong-choice')
+      }
+      function hint(evt) {
+        evt.preventDefault()
+        let hintNo = evt.target.href.split('#')[1]
+        if (!hintNo) alert('Only internal links are supported.')
+        else {
+          console.log('showing hint', hintNo, hints[hintNo-1])
+          document.getElementById('hint').innerHTML = hints[hintNo-1]
+          document.getElementById('hint-control').checked = true
+        }
+        return false
+      }
+
+      var answer, hints
+      const url = location.hash.slice(1)
+      
+      log('url:', url)
+      fetch(url)
+        .then( resp => resp.text() )
+        .then( html => {
+          const parser = new DOMParser()
+          const dom = parser.parseFromString(html, "text/html")
+          console.log(dom)
+          let sheet1 = document.createElement('style')
+          sheet1.innerHTML = dom.querySelector('head > style').innerHTML
+          document.head.appendChild(sheet1)
+          let sheet2 = document.createElement('style')
+          sheet2.innerHTML = dom.querySelector('#contents > style').innerHTML
+          document.head.appendChild(sheet2)
+
+          let container = dom.querySelector('#contents > div')
+          log('Title:', grabNodes(container, 'Question Title')[0].firstChild.innerHTML)
+          log('Author:', grabNodes(container, 'Author')[0].firstChild.innerHTML)
+          log('Categories:', grabNodes(container, 'Categories')[0].firstChild.innerHTML)
+          // #contents > div > p:nth-child(9) > span
+          answer = grabNodes(container, 'Correct Answer')[0].firstChild.innerText
+          log('Correct answer:', answer)
+
+          let main = document.querySelector('main')
+          main.className = container.className
+          grabNodes(container, 'Question Content').forEach( n => main.appendChild(n) )
+          Array.from(grabNodes(container, 'Choices')[0].children).forEach( (node, idx) => {
+            let label = node.querySelector('span').innerHTML
+            main.innerHTML += `\n<button data-no="${idx+1}" class="choice">${label}</button>`
+          })
+          Array.from(document.querySelectorAll('.choice')).forEach( btn => btn.onclick = respond)
+          let followup = document.querySelector('#followup')
+          grabNodes(container, 'Followup').forEach( n => followup.appendChild(n) )
+          Array.from(document.querySelectorAll('a')).forEach( btn => btn.onclick = hint)
+          hints = Array.from(grabNodes(container, 'Hints')[0].children)
+            .map( node => node.querySelector('span').innerHTML )
+          hints.forEach( (h, i) => log(`  hint ${i+1}:  ${h}`) )
+        })
+        // .catch( err => log('Failed to fetch page: ', err) )
+  }
+    window.onload = main
+    // document.getElementById('ipt-url').value = 'https://docs.google.com/document/d/e/2PACX-1vSMMwYxo_GFUGwsOy6LUKHlGiYcL5AZdlrNuZt3xkf-8mi4C1Bcm1EGqP_NA32QUjk8u1tgP5bNuLw4/pub#1'
+    // document.getElementById('btn-parse').onclick = evt => {
+    //   // log('starting...')
+    //   if (document.getElementById('ipt-url').value.length > 10) {
+    //     fetch(document.getElementById('ipt-url').value)
+    //       .then( resp => resp.text() )
+    //       .then( html => {
+    //           const parser = new DOMParser()
+    //           const dom = parser.parseFromString(html, "text/html")
+    //           console.log(dom)
+    //           let sheet1 = document.createElement('style')
+    //           sheet1.innerHTML = dom.querySelector('head > style').innerHTML
+    //           document.body.appendChild(sheet1)
+    //           let sheet2 = document.createElement('style')
+    //           sheet2.innerHTML = dom.querySelector('#contents > style').innerHTML
+    //           document.body.appendChild(sheet2)
+    //           log('title:', dom.querySelector('#contents > div > p:nth-child(4) > span').innerHTML)
+    //           log('author:', dom.querySelector('#contents > div > p:nth-child(6) > span').innerHTML)
+    //           log('categories:', dom.querySelector('#contents > div > p:nth-child(8)').innerHTML)
+    //           // document.getElementById('question').appendChild(dom.querySelector('#contents > div > p.c5')) //.cloneNode(true))
+    //           document.getElementById('question').appendChild(dom.querySelector('#contents > div > p:nth-child(11) > span'))
+    //           // #contents > div > p.c5 #contents > div > p.c10 #contents > div > p:nth-child(11) > span
+    //         })
+    //       // .catch( err => log('Failed to fetch page: ', err) )
+    //   }
+    // }
+
+    // http://127.0.0.1:5500/www/question-tester.html#document/d/e/2PACX-1vSMMwYxo_GFUGwsOy6LUKHlGiYcL5AZdlrNuZt3xkf-8mi4C1Bcm1EGqP_NA32QUjk8u1tgP5bNuLw4/pub#1
+  </script>
+</body>
+</html>
